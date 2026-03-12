@@ -95,8 +95,8 @@ export default function StatsScreen() {
                             end={{ x: 1, y: 1 }}
                         >
                             <Ionicons name="flame" size={32} color="#FFF" />
-                            <ThemedText style={styles.statNumber}>{todayCount}</ThemedText>
-                            <ThemedText style={styles.statLabel}>Thẻ ôn hôm nay</ThemedText>
+                            <Text style={styles.statNumber}>{todayCount}</Text>
+                            <Text style={styles.statLabel}>Thẻ ôn hôm nay</Text>
                         </LinearGradient>
                     </View>
 
@@ -109,11 +109,11 @@ export default function StatsScreen() {
                             width={width - 40}
                             height={220}
                             chartConfig={chartConfig}
+                            fromZero
                             bezier
                             style={{
                                 marginVertical: 8,
                                 borderRadius: 16,
-                                paddingRight: 30
                             }}
                         />
                     </View>
