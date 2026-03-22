@@ -95,11 +95,11 @@ export async function getDecks(): Promise<Deck[]> {
     }));
 }
 
-export async function addDeck(title: string, mongodb_id?: string): Promise<number> {
+export async function addDeck(title: string, mongodb_id?: string, isPublic: boolean = false): Promise<number> {
     const db = await getDb();
     const result = await db.runAsync(
-        'INSERT INTO decks (title, mongodb_id, created_at) VALUES (?, ?, ?)',
-        [title, mongodb_id || null, new Date().toISOString()]
+        'INSERT INTO decks (title, mongodb_id, is_public, created_at) VALUES (?, ?, ?, ?)',
+        [title, mongodb_id || null, isPublic ? 1 : 0, new Date().toISOString()]
     );
     return result.lastInsertRowId;
 }
@@ -216,4 +216,11 @@ export async function getTotalCardsCount(): Promise<number> {
     const db = await getDb();
     const result = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM cards');
     return result?.count || 0;
+}
+
+export async function clearAllData(): Promise<void> {
+    const db = await getDb();
+    await db.execAsync('DELETE FROM decks;');
+    await db.execAsync('DELETE FROM cards;');
+    await db.execAsync('DELETE FROM review_logs;');
 }

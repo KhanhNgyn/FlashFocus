@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-
+import { useFlashcardStore } from '@/src/store/flashcardStore';
 import { HapticTab } from '@/components/haptic-tab';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/theme';
@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const { isAdmin } = useFlashcardStore();
 
   return (
     <Tabs
@@ -56,6 +57,7 @@ export default function TabLayout() {
         options={{
           title: 'Admin',
           tabBarIcon: ({ color }) => <Ionicons size={28} name="settings" color={color} />,
+          href: isAdmin ? undefined : null,
         }}
       />
     </Tabs>

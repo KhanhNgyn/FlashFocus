@@ -8,6 +8,7 @@ interface User {
     id: string;
     username: string;
     isPremium: boolean;
+    isAdmin: boolean;
 }
 
 interface FlashcardState {
@@ -19,6 +20,7 @@ interface FlashcardState {
     user: User | null;
     token: string | null;
     isLoggedIn: boolean;
+    isAdmin: boolean;
     initialize: () => Promise<void>;
     fetchPublicDecks: () => Promise<void>;
     cloneDeck: (mongodbId: string) => Promise<void>;
@@ -47,31 +49,36 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     user: null,
     token: null,
     isLoggedIn: false,
+    isAdmin: false,
 
     setPremium: (status: boolean) => set({ isPremium: status }),
 
     fetchPublicDecks: async () => {
         try {
-            const response = await api.get('/api/decks');
-            // Filter out user's own decks if they are public
-            const currentUserId = get().user?.id;
-            const publicDecks = response.data.filter((d: any) => d.is_public && d.user_id !== currentUserId);
-            set({ publicDecks });
+            const response = await api.get('/api/decks/public');
+            set({ publicDecks: response.data });
         } catch (e) {
             console.error('Fetch public decks failed:', e);
         }
     },
 
     cloneDeck: async (mongodbId: string) => {
-        const publicDeck = get().publicDecks.find(d => d.mongodb_id === mongodbId);
-        if (!publicDeck) return;
+        const publicDeck = get().publicDecks.find(d => (d as any)._id === mongodbId || d.mongodb_id === mongodbId);
+        if (!publicDeck) {
+            console.log('Public deck not found in current state, fetching...');
+            return;
+        }
 
+        set({ isLoading: true });
         try {
             // 1. Create locally
             const localDeckId = await db.addDeck(publicDeck.title + " (Clone)");
             
             // 2. Create on Server for current user
-            const resDeck = await api.post('/api/decks', { title: publicDeck.title + " (Clone)" });
+            const resDeck = await api.post('/api/decks', { 
+                title: publicDeck.title + " (Clone)",
+                is_public: false 
+            });
             await db.updateDeckMongoId(localDeckId, resDeck.data._id);
 
             // 3. Fetch cards
@@ -94,6 +101,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         } catch (e) {
             console.error('Clone failed:', e);
             Alert.alert("Lỗi", "Không thể copy bộ thẻ này.");
+        } finally {
+            set({ isLoading: false });
         }
     },
 
@@ -111,7 +120,13 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
             }
             
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            set({ token, user, isLoggedIn: true, isPremium: user.isPremium });
+            set({ 
+                token, 
+                user, 
+                isLoggedIn: true, 
+                isPremium: !!user.isPremium,
+                isAdmin: !!user.isAdmin 
+            });
         } catch (error: any) {
             console.error('Login error details:', error.response?.data || error.message);
             throw new Error(error.response?.data?.error || 'Đăng nhập thất bại');
@@ -133,10 +148,20 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     },
 
     logout: async () => {
+        console.log('Logging out, clearing local data and admin state...');
         await SecureStore.deleteItemAsync('token');
         await SecureStore.deleteItemAsync('user');
+        await db.clearAllData();
         delete api.defaults.headers.common['Authorization'];
-        set({ user: null, token: null, isLoggedIn: false, decks: [], activeCards: [] });
+        set({ 
+            user: null, 
+            token: null, 
+            isLoggedIn: false, 
+            isAdmin: false,
+            decks: [], 
+            activeCards: [], 
+            publicDecks: [] 
+        });
     },
 
     initialize: async () => {
@@ -153,7 +178,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
                         token, 
                         user: userData, 
                         isLoggedIn: true, 
-                        isPremium: !!userData.isPremium 
+                        isPremium: !!userData.isPremium,
+                        isAdmin: !!userData.isAdmin
                     });
                 } else {
                     await SecureStore.deleteItemAsync('token');
@@ -181,29 +207,42 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
 
     syncData: async () => {
         try {
-            // 1. Fetch from Server
+            console.log('Starting backend sync...');
             const response = await api.get('/api/decks');
             const serverDecks = response.data;
             const localDecks = await db.getDecks();
+            console.log(`Synced ${serverDecks.length} decks from server. Local has ${localDecks.length}.`);
 
-            // 2. Add server decks to local if missing
+            // 1. Add server decks to local if missing
             for (const sDeck of serverDecks) {
-                const exists = localDecks.find(d => d.mongodb_id === sDeck._id);
-                if (!exists) {
-                    await db.addDeck(sDeck.title, sDeck._id);
+                const localMatch = localDecks.find(ld => ld.mongodb_id === sDeck._id || ld.title === sDeck.title);
+                if (!localMatch) {
+                    console.log(`Adding missing server deck to local: ${sDeck.title}`);
+                    await db.addDeck(sDeck.title, sDeck._id, sDeck.is_public);
+                } else if (!localMatch.mongodb_id) {
+                    console.log(`Updating local deck with missing mongodb_id: ${sDeck.title}`);
+                    await db.updateDeckMongoId(localMatch.id, sDeck._id);
                 }
             }
 
-            // 3. Post local decks to server if missing mongodb_id
+            // 2. Sync local decks to server if missing mongodb_id
             for (const lDeck of localDecks) {
                 if (!lDeck.mongodb_id) {
-                    const res = await api.post('/api/decks', { title: lDeck.title });
-                    await db.updateDeckMongoId(lDeck.id, res.data._id);
+                    console.log(`Syncing local-only deck to server: ${lDeck.title}`);
+                    try {
+                        const res = await api.post('/api/decks', { 
+                            title: lDeck.title, 
+                            is_public: lDeck.is_public 
+                        });
+                        await db.updateDeckMongoId(lDeck.id, res.data._id);
+                    } catch (e) {
+                        console.error(`Failed to sync deck ${lDeck.title}:`, e);
+                    }
                 }
             }
-
-            console.log('Backend sync complete');
+            
             await get().loadDecks();
+            console.log('Backend sync complete');
         } catch (e) {
             console.error('Sync failed:', e);
         }
@@ -243,13 +282,23 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     },
 
     deleteDeck: async (id: number) => {
+        const deck = get().decks.find(d => d.id === id);
+        console.log('Attempting to delete deck locally:', id, 'mongodb_id:', deck?.mongodb_id);
         await db.deleteDeck(id);
         await get().loadDecks();
         
         // Delete from Node.js Backend
-        // Note: In a real app, you'd need the MongoDB ID here. 
-        // For simplicity, we assume IDs match or find by title.
-        // await api.delete(`/api/decks/${id}`);
+        if (deck?.mongodb_id) {
+            console.log('Attempting to delete deck from backend:', deck.mongodb_id);
+            try {
+                const res = await api.delete(`/api/decks/${deck.mongodb_id}`);
+                console.log('Backend deletion result:', res.data);
+            } catch (e) {
+                console.error('Failed to delete deck from backend:', e);
+            }
+        } else {
+            console.log('No mongodb_id found for deck, skipping backend deletion');
+        }
     },
 
     loadCards: async (deckId: number) => {
@@ -265,19 +314,41 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     },
 
     addCard: async (deckId: number, front: string, back: string, tags: string = "") => {
-        await db.addCard(deckId, front, back, tags);
-        await get().loadCards(deckId);
+        const localId = await db.addCard(deckId, front, back, tags);
         
-        // Post to Node.js Backend
-        await api.post('/api/cards', { deck_id: deckId, front, back, tags });
+        try {
+            const deck = get().decks.find(d => d.id === deckId);
+            if (deck?.mongodb_id) {
+                const res = await api.post('/api/cards', { 
+                    deck_id: deck.mongodb_id, 
+                    front, 
+                    back, 
+                    tags 
+                });
+                await db.updateCardMongoId(localId, res.data._id);
+            }
+        } catch (e) {
+            console.error('Failed to sync card to backend:', e);
+        }
+        
+        await get().loadCards(deckId);
     },
 
     deleteCard: async (id: number) => {
         const { activeCards } = get();
+        const card = activeCards.find(c => c.id === id);
+        
         await db.deleteCard(id);
         set({ activeCards: activeCards.filter(c => c.id !== id) });
         
-        // await api.delete(`/api/cards/${id}`);
+        // Delete from backend if exists
+        if (card?.mongodb_id) {
+            try {
+                await api.delete(`/api/cards/${card.mongodb_id}`);
+            } catch (e) {
+                console.error('Failed to delete card from backend:', e);
+            }
+        }
     },
 
     reviewCard: async (cardId: number, quality: number) => {

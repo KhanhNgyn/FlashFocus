@@ -13,6 +13,14 @@ const Card = require('./models/Card');
 const Message = require('./models/Message');
 const auth = require('./middleware/auth');
 
+const adminCheck = (req, res, next) => {
+    if (req.user && req.user.isAdmin) {
+        next();
+    } else {
+        res.status(403).json({ error: 'Admin access required' });
+    }
+};
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
@@ -55,8 +63,12 @@ app.post('/api/auth/login', async (req, res) => {
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
-        const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '1d' });
-        res.json({ token, user: { id: user._id, username: user.username, isPremium: user.isPremium } });
+        const token = jwt.sign(
+            { id: user._id, username: user.username, isAdmin: user.isAdmin }, 
+            JWT_SECRET, 
+            { expiresIn: '1d' }
+        );
+        res.json({ token, user: { id: user._id, username: user.username, isPremium: user.isPremium, isAdmin: user.isAdmin } });
     } catch (e) {
         console.error('Login error FULL:', e);
         res.status(500).json({ error: e.message });
@@ -66,12 +78,23 @@ app.post('/api/auth/login', async (req, res) => {
 // Routes
 app.get('/api/decks', auth, async (req, res) => {
     try {
-        const decks = await Deck.find({
-            $or: [
-                { user_id: req.user.id },
-                { is_public: true }
-            ]
-        }).populate('user_id', 'username').sort({ created_at: -1 });
+        const decks = await Deck.find({ userId: req.user.id })
+            .populate('userId', 'username')
+            .sort({ created_at: -1 });
+        res.json(decks);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/decks/public', auth, async (req, res) => {
+    try {
+        const decks = await Deck.find({ 
+            is_public: true, 
+            userId: { $ne: req.user.id } // Exclude my own public decks
+        })
+        .populate('userId', 'username')
+        .sort({ created_at: -1 });
         res.json(decks);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -79,14 +102,16 @@ app.get('/api/decks', auth, async (req, res) => {
 });
 
 app.post('/api/decks', auth, async (req, res) => {
+    console.log(`User ${req.user.username} is creating a deck:`, req.body.title);
     try {
         const deck = new Deck({
             ...req.body,
-            user_id: req.user.id
+            userId: req.user.id
         });
         await deck.save();
         res.json(deck);
     } catch (e) {
+        console.error('Create deck error:', e);
         res.status(400).json({ error: e.message });
     }
 });
@@ -94,7 +119,7 @@ app.post('/api/decks', auth, async (req, res) => {
 app.patch('/api/decks/:id', auth, async (req, res) => {
     try {
         const deck = await Deck.findOneAndUpdate(
-            { _id: req.params.id, user_id: req.user.id },
+            { _id: req.params.id, userId: req.user.id },
             req.body,
             { new: true }
         );
@@ -106,12 +131,18 @@ app.patch('/api/decks/:id', auth, async (req, res) => {
 });
 
 app.delete('/api/decks/:id', auth, async (req, res) => {
+    console.log(`User ${req.user.username} is deleting deck ID:`, req.params.id);
     try {
-        const deck = await Deck.findOneAndDelete({ _id: req.params.id, user_id: req.user.id });
-        if (!deck) return res.status(404).json({ error: 'Deck not found or unauthorized' });
+        const deck = await Deck.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+        if (!deck) {
+            console.log('Deck not found or unauthorized for deletion');
+            return res.status(404).json({ error: 'Deck not found or unauthorized' });
+        }
         await Card.deleteMany({ deck_id: req.params.id });
+        console.log('Deck and associated cards deleted successfully');
         res.json({ success: true });
     } catch (e) {
+        console.error('Delete deck error:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -121,7 +152,7 @@ app.get('/api/cards/:deckId', auth, async (req, res) => {
         // Check if user has access to this deck
         const deck = await Deck.findOne({
             _id: req.params.deckId,
-            $or: [{ user_id: req.user.id }, { is_public: true }]
+            $or: [{ userId: req.user.id }, { is_public: true }]
         });
         if (!deck) return res.status(403).json({ error: 'Access denied' });
 
@@ -135,7 +166,7 @@ app.get('/api/cards/:deckId', auth, async (req, res) => {
 app.post('/api/cards', auth, async (req, res) => {
     try {
         // Ensure user owns the deck they are adding cards to
-        const deck = await Deck.findOne({ _id: req.body.deck_id, user_id: req.user.id });
+        const deck = await Deck.findOne({ _id: req.body.deck_id, userId: req.user.id });
         if (!deck) return res.status(403).json({ error: 'Unauthorized to add cards to this deck' });
 
         const card = new Card(req.body);
@@ -151,7 +182,7 @@ app.put('/api/cards/:id', auth, async (req, res) => {
         const card = await Card.findById(req.params.id);
         if (!card) return res.status(404).json({ error: 'Card not found' });
 
-        const deck = await Deck.findOne({ _id: card.deck_id, user_id: req.user.id });
+        const deck = await Deck.findOne({ _id: card.deck_id, userId: req.user.id });
         if (!deck) return res.status(403).json({ error: 'Unauthorized' });
 
         Object.assign(card, req.body);
@@ -167,10 +198,32 @@ app.delete('/api/cards/:id', auth, async (req, res) => {
         const card = await Card.findById(req.params.id);
         if (!card) return res.status(404).json({ error: 'Card not found' });
 
-        const deck = await Deck.findOne({ _id: card.deck_id, user_id: req.user.id });
+        const deck = await Deck.findOne({ _id: card.deck_id, userId: req.user.id });
         if (!deck) return res.status(403).json({ error: 'Unauthorized' });
 
         await card.deleteOne();
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Admin Routes (Global Management)
+app.get('/api/admin/decks', [auth, adminCheck], async (req, res) => {
+    try {
+        const decks = await Deck.find()
+            .populate('userId', 'username email')
+            .sort({ created_at: -1 });
+        res.json(decks);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/admin/decks/:id', [auth, adminCheck], async (req, res) => {
+    try {
+        await Deck.findByIdAndDelete(req.params.id);
+        await Card.deleteMany({ deck_id: req.params.id });
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -194,8 +247,8 @@ io.on('connection', (socket) => {
 
     socket.on('send_message', async (data) => {
         try {
-            const { content, user_id, username } = data;
-            const msg = new Message({ content, user_id, username });
+            const { content, userId, username } = data;
+            const msg = new Message({ content, userId, username });
             await msg.save();
             io.emit('receive_message', msg);
         } catch (e) {

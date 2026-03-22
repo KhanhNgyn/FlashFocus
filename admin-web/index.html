@@ -83,75 +83,92 @@
     </style>
 </head>
 <body>
+    <div id="login-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+        <div style="background: white; padding: 40px; border-radius: 12px; width: 400px; text-align: center;">
+            <h2 style="margin-top: 0">Admin Login</h2>
+            <p>FlashFocus Management System</p>
+            <input type="email" id="login-email" placeholder="Email" style="width: 100%; margin-bottom: 10px;">
+            <input type="password" id="login-password" placeholder="Mật khẩu" style="width: 100%; margin-bottom: 20px;">
+            <button onclick="login()" style="width: 100%; padding: 12px">Đăng nhập</button>
+            <p id="login-error" style="color: red; margin-top: 10px; display: none;">Lỗi đăng nhập!</p>
+        </div>
+    </div>
+
     <aside>
         <h2>FlashFocus Admin</h2>
         <p style="opacity: 0.6">Web Management Portal</p>
         <hr style="opacity: 0.2; margin: 20px 0">
         <nav>
-            <p>Dashboard</p>
-            <p>User Decks</p>
-            <p>Global Analytics</p>
+            <p style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">Dashboard</p>
+            <p onclick="logout()" style="cursor: pointer; opacity: 0.6; margin-top: 20px">Đăng xuất</p>
         </nav>
     </aside>
 
     <main>
         <div class="header">
             <h1>Quản trị Hệ thống</h1>
-            <div id="status-badge" class="badge">Chờ kết nối...</div>
-        </div>
-
-        <div class="config-panel">
-            <h3>Cấu hình Kết nối API</h3>
-            <p>Nhập địa chỉ URL của Node.js Server (mặc định: http://localhost:5000):</p>
-            <input type="text" id="api-url" placeholder="http://localhost:5000" value="http://localhost:5000">
-            <button onclick="connectAPI()">Kết nối & Tải dữ liệu</button>
+            <div id="status-badge" class="badge">Đã đăng nhập</div>
         </div>
 
         <div class="card">
-            <h2>Danh sách Bộ thẻ (Decks)</h2>
+            <h2>Danh sách Bộ thẻ Toàn hệ thống</h2>
             <table id="decks-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>Tác giả</th>
                         <th>Tiêu đề</th>
                         <th>Ngày tạo</th>
                         <th>Thao tác</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- Dữ liệu sẽ load ở đây -->
+                    <!-- Data will load here -->
                 </tbody>
             </table>
         </div>
     </main>
 
     <script>
-        let BASE_URL = '';
+        const API_URL = 'http://localhost:5000';
+        let token = localStorage.getItem('ff_admin_token');
 
-        async function connectAPI() {
-            BASE_URL = document.getElementById('api-url').value;
-            if(!BASE_URL) return alert('Vui lòng nhập URL');
+        if (token) {
+            document.getElementById('login-overlay').style.display = 'none';
+            loadDecks();
+        }
+
+        async function login() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
 
             try {
-                const res = await fetch(`${BASE_URL}/api/stats`);
-                if(res.ok) {
-                    document.getElementById('status-badge').innerText = 'Máy chủ Online';
-                    document.getElementById('status-badge').style.background = '#dcfce7';
-                    document.getElementById('status-badge').style.color = '#166534';
+                const res = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+                
+                if (res.ok && data.user.isAdmin) {
+                    token = data.token;
+                    localStorage.setItem('ff_admin_token', token);
+                    document.getElementById('login-overlay').style.display = 'none';
                     loadDecks();
                 } else {
-                    throw new Error();
+                    errorEl.innerText = data.user && !data.user.isAdmin ? 'Tài khoản không có quyền Admin!' : 'Email hoặc mật khẩu sai!';
+                    errorEl.style.display = 'block';
                 }
             } catch (e) {
-                alert('Không thể kết nối tới Server. Hãy đảm bảo Server Node.js đang chạy.');
-                document.getElementById('status-badge').innerText = 'Lỗi kết nối';
-                document.getElementById('status-badge').style.background = '#fecaca';
+                errorEl.style.display = 'block';
             }
         }
 
         async function loadDecks() {
             try {
-                const res = await fetch(`${BASE_URL}/api/decks`);
+                const res = await fetch(`${API_URL}/api/admin/decks`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
                 const data = await res.json();
                 const tbody = document.querySelector('#decks-table tbody');
                 tbody.innerHTML = '';
@@ -159,7 +176,10 @@
                 data.forEach(deck => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${deck._id.substring(0,8)}...</td>
+                        <td>
+                            <div style="font-weight: bold">${deck.userId?.username || 'Guest'}</div>
+                            <div style="font-size: 11px; opacity: 0.6">${deck.userId?.email || ''}</div>
+                        </td>
                         <td>${deck.title}</td>
                         <td>${new Date(deck.created_at).toLocaleDateString()}</td>
                         <td><button class="btn-danger" onclick="deleteDeck('${deck._id}')">Xóa</button></td>
@@ -167,18 +187,26 @@
                     tbody.appendChild(tr);
                 });
             } catch (e) {
-                console.error(e);
+                if (res.status === 401 || res.status === 403) logout();
             }
         }
 
         async function deleteDeck(id) {
-            if(!confirm('Bạn có chắc muốn xóa bộ thẻ này?')) return;
+            if(!confirm('Bạn có chắc muốn xóa bộ thẻ này khỏi hệ thống?')) return;
             try {
-                const res = await fetch(`${BASE_URL}/api/decks/${id}`, { method: 'DELETE' });
+                const res = await fetch(`${API_URL}/api/admin/decks/${id}`, { 
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
                 if(res.ok) loadDecks();
             } catch (e) {
                 alert('Lỗi khi xóa dữ liệu');
             }
+        }
+
+        function logout() {
+            localStorage.removeItem('ff_admin_token');
+            location.reload();
         }
     </script>
 </body>

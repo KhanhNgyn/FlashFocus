@@ -10,7 +10,7 @@ interface Message {
     _id: string;
     content: string;
     created_at: string;
-    user_id: string;
+    userId: string;
     username?: string;
 }
 
@@ -54,7 +54,7 @@ export default function CommunityScreen() {
 
         socket.emit('send_message', { 
             content: inputText, 
-            user_id: user.id,
+            userId: user.id,
             username: user.username 
         });
         setInputText('');
@@ -74,7 +74,7 @@ export default function CommunityScreen() {
                 <Ionicons name="book" size={24} color={Colors.light.tint} style={styles.deckIcon} />
                 <View>
                     <Text style={styles.deckTitle}>{item.title}</Text>
-                    <Text style={styles.deckAuthor}>Chia sẻ bởi: {item.user_id?.username || 'Người dùng'}</Text>
+                    <Text style={styles.deckAuthor}>Chia sẻ bởi: {item.userId?.username || 'Người dùng'}</Text>
                 </View>
             </View>
             <TouchableOpacity style={styles.cloneButton} onPress={() => cloneDeck(item._id)}>
