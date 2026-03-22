@@ -6,7 +6,8 @@ import { LineChart } from 'react-native-chart-kit';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
-import { getReviewStats, getTodayReviewCount, DailyStats } from '../../src/services/Database';
+import api from '../../src/services/api';
+import { getReviewStats, getTodayReviewCount, getTotalDecksCount, getTotalCardsCount, DailyStats } from '../../src/services/Database';
 import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
@@ -18,6 +19,8 @@ export default function StatsScreen() {
 
     const [isLoading, setIsLoading] = useState(true);
     const [todayCount, setTodayCount] = useState(0);
+    const [deckCount, setDeckCount] = useState(0);
+    const [cardCount, setCardCount] = useState(0);
     const [chartData, setChartData] = useState<{ labels: string[], datasets: [{ data: number[] }] }>({
         labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
         datasets: [{ data: [0, 0, 0, 0, 0, 0, 0] }]
@@ -28,6 +31,11 @@ export default function StatsScreen() {
         try {
             const today = await getTodayReviewCount();
             setTodayCount(today);
+
+            // Fetch from Node.js Backend
+            const response = await api.get('/api/stats');
+            setDeckCount(response.data.totalDecks);
+            setCardCount(response.data.totalCards);
 
             const stats = await getReviewStats(7);
 
@@ -94,9 +102,31 @@ export default function StatsScreen() {
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                         >
-                            <Ionicons name="flame" size={32} color="#FFF" />
-                            <Text style={styles.statNumber}>{todayCount}</Text>
-                            <Text style={styles.statLabel}>Thẻ ôn hôm nay</Text>
+                            <Ionicons name="flame" size={24} color="#FFF" />
+                            <Text style={styles.statNumberSmall}>{todayCount}</Text>
+                            <Text style={styles.statLabelSmall}>Hôm nay</Text>
+                        </LinearGradient>
+
+                        <LinearGradient
+                            colors={['#10B981', '#059669']}
+                            style={[styles.statCard, { marginHorizontal: 10 }]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                        >
+                            <Ionicons name="apps" size={24} color="#FFF" />
+                            <Text style={styles.statNumberSmall}>{deckCount}</Text> 
+                            <Text style={styles.statLabelSmall}>Bộ thẻ</Text>
+                        </LinearGradient>
+
+                        <LinearGradient
+                            colors={['#F59E0B', '#D97706']}
+                            style={styles.statCard}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                        >
+                            <Ionicons name="list" size={24} color="#FFF" />
+                            <Text style={styles.statNumberSmall}>{cardCount}</Text>
+                            <Text style={styles.statLabelSmall}>Thẻ học</Text>
                         </LinearGradient>
                     </View>
 
@@ -134,18 +164,18 @@ const styles = StyleSheet.create({
     cardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
     statCard: {
         flex: 1,
-        padding: 20,
+        padding: 15,
         borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#4F46E5',
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: 0.1,
         shadowRadius: 8,
-        elevation: 6,
+        elevation: 4,
     },
-    statNumber: { fontSize: 40, fontWeight: '800', color: '#FFF', marginVertical: 8 },
-    statLabel: { fontSize: 14, color: '#E0E7FF', fontWeight: '600' },
+    statNumberSmall: { fontSize: 24, fontWeight: '800', color: '#FFF', marginVertical: 4 },
+    statLabelSmall: { fontSize: 10, color: '#FFFFFF', fontWeight: '600', opacity: 0.9 },
 
     chartContainer: {
         paddingVertical: 20,

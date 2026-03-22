@@ -1,4 +1,4 @@
-import { View, Platform, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Platform, StyleSheet, Dimensions, TouchableOpacity, Text } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import PomodoroTimer from '../../src/components/pomodoro/PomodoroTimer';
@@ -7,16 +7,25 @@ import { useEffect } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 import { useThemeStore } from '../../src/store/themeStore';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useFlashcardStore } from '../../src/store/flashcardStore';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { mode, setMode } = useThemeStore();
+  const { isPremium, user, logout } = useFlashcardStore();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace('/login');
+  };
 
   const toggleTheme = () => {
     if (mode === 'light' || (mode === 'system' && !isDark)) {
@@ -38,16 +47,33 @@ export default function HomeScreen() {
       >
         <View style={styles.headerContent}>
           <View>
-            <ThemedText type="title" style={styles.greeting}>Xin chào,</ThemedText>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <ThemedText type="title" style={styles.greeting}>Xin chào, {user?.username || 'Bạn'}</ThemedText>
+              {isPremium && (
+                <View style={styles.premiumBadge}>
+                  <Text style={styles.premiumText}>PREMIUM</Text>
+                </View>
+              )}
+            </View>
             <ThemedText style={styles.subGreeting}>Hôm nay bạn muốn học gì?</ThemedText>
           </View>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={toggleTheme}
-            style={[styles.avatar, { backgroundColor: isDark ? '#334155' : '#E5E7EB' }]}
-          >
-            <Ionicons name={isDark ? "moon" : "sunny"} size={24} color={isDark ? '#FACC15' : '#F59E0B'} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={toggleTheme}
+              style={[styles.avatar, { backgroundColor: isDark ? '#334155' : '#E5E7EB', marginRight: 10 }]}
+            >
+              <Ionicons name={isDark ? "moon" : "sunny"} size={22} color={isDark ? '#FACC15' : '#F59E0B'} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleLogout}
+              style={[styles.avatar, { backgroundColor: isDark ? '#334155' : '#FEE2E2' }]}
+            >
+              <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
@@ -81,8 +107,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   greeting: {
-    fontSize: 28,
-    fontFamily: 'System', // You can add custom fonts later
+    fontSize: 24,
     fontWeight: '800',
     marginBottom: 4,
   },
@@ -91,9 +116,9 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -101,5 +126,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 40,
     alignItems: 'center',
+  },
+  premiumBadge: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 5,
+    marginLeft: 10,
+  },
+  premiumText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#000',
   }
 });

@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function DecksScreen() {
-  const { decks, addDeck, deleteDeck } = useFlashcardStore();
+  const { decks, addDeck, deleteDeck, togglePublic } = useFlashcardStore();
   const [newDeckTitle, setNewDeckTitle] = useState('');
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -100,9 +100,21 @@ export default function DecksScreen() {
                   </ThemedText>
                 </View>
               </View>
-              <TouchableOpacity style={styles.deleteButton} onPress={() => confirmDelete(item.id, item.title)}>
-                <Ionicons name="trash-outline" size={20} color="#EF4444" />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity 
+                  style={[styles.smallButton, { backgroundColor: item.is_public ? 'rgba(59, 130, 246, 0.1)' : 'rgba(100, 116, 139, 0.1)', marginRight: 8 }]} 
+                  onPress={() => togglePublic(item.id, !item.is_public)}
+                >
+                  <Ionicons 
+                    name={item.is_public ? "earth" : "lock-closed"} 
+                    size={18} 
+                    color={item.is_public ? "#3B82F6" : "#64748B"} 
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton} onPress={() => confirmDelete(item.id, item.title)}>
+                  <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -178,6 +190,10 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     backgroundColor: 'rgba(239, 68, 68, 0.1)'
+  },
+  smallButton: {
+    padding: 8,
+    borderRadius: 10,
   },
 
   emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 80 },

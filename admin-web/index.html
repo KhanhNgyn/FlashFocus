@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashFocus Admin Dashboard</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+        }
+        aside {
+            width: 260px;
+            background: #1e293b;
+            color: white;
+            height: 100vh;
+            padding: 20px;
+            position: fixed;
+        }
+        main {
+            margin-left: 260px;
+            padding: 40px;
+            width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: #e2e8f0;
+        }
+        button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            background: var(--primary);
+            color: white;
+        }
+        .btn-danger { background: #ef4444; }
+        .config-panel {
+            background: #f1f5f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <aside>
+        <h2>FlashFocus Admin</h2>
+        <p style="opacity: 0.6">Web Management Portal</p>
+        <hr style="opacity: 0.2; margin: 20px 0">
+        <nav>
+            <p>Dashboard</p>
+            <p>User Decks</p>
+            <p>Global Analytics</p>
+        </nav>
+    </aside>
+
+    <main>
+        <div class="header">
+            <h1>Quản trị Hệ thống</h1>
+            <div id="status-badge" class="badge">Chờ kết nối...</div>
+        </div>
+
+        <div class="config-panel">
+            <h3>Cấu hình Kết nối API</h3>
+            <p>Nhập địa chỉ URL của Node.js Server (mặc định: http://localhost:5000):</p>
+            <input type="text" id="api-url" placeholder="http://localhost:5000" value="http://localhost:5000">
+            <button onclick="connectAPI()">Kết nối & Tải dữ liệu</button>
+        </div>
+
+        <div class="card">
+            <h2>Danh sách Bộ thẻ (Decks)</h2>
+            <table id="decks-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tiêu đề</th>
+                        <th>Ngày tạo</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Dữ liệu sẽ load ở đây -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        let BASE_URL = '';
+
+        async function connectAPI() {
+            BASE_URL = document.getElementById('api-url').value;
+            if(!BASE_URL) return alert('Vui lòng nhập URL');
+
+            try {
+                const res = await fetch(`${BASE_URL}/api/stats`);
+                if(res.ok) {
+                    document.getElementById('status-badge').innerText = 'Máy chủ Online';
+                    document.getElementById('status-badge').style.background = '#dcfce7';
+                    document.getElementById('status-badge').style.color = '#166534';
+                    loadDecks();
+                } else {
+                    throw new Error();
+                }
+            } catch (e) {
+                alert('Không thể kết nối tới Server. Hãy đảm bảo Server Node.js đang chạy.');
+                document.getElementById('status-badge').innerText = 'Lỗi kết nối';
+                document.getElementById('status-badge').style.background = '#fecaca';
+            }
+        }
+
+        async function loadDecks() {
+            try {
+                const res = await fetch(`${BASE_URL}/api/decks`);
+                const data = await res.json();
+                const tbody = document.querySelector('#decks-table tbody');
+                tbody.innerHTML = '';
+
+                data.forEach(deck => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${deck._id.substring(0,8)}...</td>
+                        <td>${deck.title}</td>
+                        <td>${new Date(deck.created_at).toLocaleDateString()}</td>
+                        <td><button class="btn-danger" onclick="deleteDeck('${deck._id}')">Xóa</button></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function deleteDeck(id) {
+            if(!confirm('Bạn có chắc muốn xóa bộ thẻ này?')) return;
+            try {
+                const res = await fetch(`${BASE_URL}/api/decks/${id}`, { method: 'DELETE' });
+                if(res.ok) loadDecks();
+            } catch (e) {
+                alert('Lỗi khi xóa dữ liệu');
+            }
+        }
+    </script>
+</body>
+</html>

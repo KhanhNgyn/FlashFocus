@@ -11,18 +11,20 @@ import { schedulePomodoroFinishNotification } from '../src/services/Notification
 import { useEffect } from 'react';
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  initialRouteName: 'login',
 };
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const initializeDb = useFlashcardStore((state) => state.initialize);
+  const isLoggedIn = useFlashcardStore((state) => state.isLoggedIn);
 
-  const { isRunning, tick, timeLeft } = usePomodoroStore();
+  const { isRunning, tick } = usePomodoroStore();
 
   useEffect(() => {
+    console.log('RootLayout Render - isLoggedIn:', isLoggedIn);
     initializeDb();
-  }, [initializeDb]);
+  }, [initializeDb, isLoggedIn]);
 
   useInterval(() => {
     const wasRunning = usePomodoroStore.getState().isRunning;
@@ -38,7 +40,14 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {!isLoggedIn ? (
+          <>
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="register" options={{ title: 'Đăng ký', headerTintColor: '#3b82f6' }} />
+          </>
+        ) : (
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        )}
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />
