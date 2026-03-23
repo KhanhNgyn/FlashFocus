@@ -1,8 +1,15 @@
 import axios from 'axios';
 
-// Thay thế bằng địa chỉ IP máy tính của bạn nếu chạy trên điện thoại thật
-// Ví dụ: http://192.168.1.5:5000
-export const API_URL = 'http://192.168.10.105:5000';
+import Constants from 'expo-constants';
+
+let API_URL = 'http://localhost:5000'; // Mặc định
+
+if (Constants?.expoConfig?.hostUri) {
+    const hostIp = Constants.expoConfig.hostUri.split(':')[0];
+    API_URL = `http://${hostIp}:5000`;
+}
+
+export { API_URL };
 
 const api = axios.create({
     baseURL: API_URL,
