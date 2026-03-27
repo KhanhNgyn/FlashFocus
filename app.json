@@ -43,7 +43,6 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/notification-icon.png",
           "color": "#4F46E5",
           "defaultChannel": "pomodoro-alerts"
         }
@@ -54,6 +53,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4675693d-78c6-4914-8a23-43f7b63ff769"
+      }
     }
   }
 }

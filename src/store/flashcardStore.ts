@@ -148,20 +148,25 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     },
 
     logout: async () => {
-        console.log('Logging out, clearing local data and admin state...');
-        await SecureStore.deleteItemAsync('token');
-        await SecureStore.deleteItemAsync('user');
-        await db.clearAllData();
-        delete api.defaults.headers.common['Authorization'];
-        set({ 
-            user: null, 
-            token: null, 
-            isLoggedIn: false, 
-            isAdmin: false,
-            decks: [], 
-            activeCards: [], 
-            publicDecks: [] 
-        });
+        try {
+            console.log('Logging out, clearing local data and admin state...');
+            await SecureStore.deleteItemAsync('token');
+            await SecureStore.deleteItemAsync('user');
+            await db.clearAllData();
+            delete api.defaults.headers.common['Authorization'];
+        } catch (e) {
+            console.warn('Logout cleanup failed:', e);
+        } finally {
+            set({ 
+                user: null, 
+                token: null, 
+                isLoggedIn: false, 
+                isAdmin: false,
+                decks: [], 
+                activeCards: [], 
+                publicDecks: [] 
+            });
+        }
     },
 
     initialize: async () => {
@@ -315,6 +320,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
 
     addCard: async (deckId: number, front: string, back: string, tags: string = "") => {
         const localId = await db.addCard(deckId, front, back, tags);
+        // Refresh local UI immediately
+        await get().loadCards(deckId);
         
         try {
             const deck = get().decks.find(d => d.id === deckId);
@@ -330,8 +337,6 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         } catch (e) {
             console.error('Failed to sync card to backend:', e);
         }
-        
-        await get().loadCards(deckId);
     },
 
     deleteCard: async (id: number) => {

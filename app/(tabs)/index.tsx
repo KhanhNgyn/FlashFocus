@@ -23,8 +23,13 @@ export default function HomeScreen() {
   const { isPremium, user, logout } = useFlashcardStore();
 
   const handleLogout = async () => {
-    await logout();
-    router.replace('/login');
+    try {
+      await logout();
+    } catch (e) {
+      console.error('Logout error:', e);
+    } finally {
+      router.replace('/login');
+    }
   };
 
   const toggleTheme = () => {
