@@ -129,7 +129,15 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
             });
         } catch (error: any) {
             console.error('Login error details:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.error || 'Đăng nhập thất bại');
+            let errorMessage = 'Đăng nhập thất bại';
+            if (error.code === 'ECONNABORTED') {
+                errorMessage = 'Kết nối máy chủ quá hạn (Render đang khởi động, vui lòng thử lại sau 30s)';
+            } else if (!error.response) {
+                errorMessage = 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra internet';
+            } else if (error.response?.data?.error) {
+                errorMessage = error.response.data.error;
+            }
+            throw new Error(errorMessage);
         } finally {
             set({ isLoading: false });
         }

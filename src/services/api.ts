@@ -13,7 +13,7 @@ export { API_URL };
 
 const api = axios.create({
     baseURL: API_URL,
-    timeout: 10000,
+    timeout: 45000, // Tăng lên 45s cho Render free tier
 });
 
 export default api;
