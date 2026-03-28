@@ -33,7 +33,7 @@ interface FlashcardState {
     deleteCard: (id: number) => Promise<void>;
     reviewCard: (cardId: number, quality: number) => Promise<void>;
     setPremium: (status: boolean) => void;
-    processPayment: (amount: number, transactionId: string) => Promise<void>;
+    processPayment: (amount: number, transactionId: string) => Promise<any>;
     syncData: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;
     register: (username: string, email: string, password: string) => Promise<void>;
@@ -56,8 +56,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     
     processPayment: async (amount, transactionId) => {
         try {
-            await api.post('/api/payments', { amount, transactionId });
-            set({ isPremium: true });
+            const res = await api.post('/api/vnpay/create', { amount });
+            return res.data; // { paymentUrl, orderId }
         } catch (e) {
             console.error('Payment processing failed:', e);
             throw e;

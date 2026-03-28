@@ -1,44 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Linking, ActivityIndicator, AppState } from 'react-native';
 import { useFlashcardStore } from '@/src/store/flashcardStore';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import { API_URL } from '@/src/services/api';
+import api from '@/src/services/api';
 
 export default function PremiumScreen() {
-    const { isPremium, processPayment } = useFlashcardStore();
-    const [cardNumber, setCardNumber] = useState('');
-    const [expiry, setExpiry] = useState('');
-    const [cvv, setCvv] = useState('');
+    const { isPremium, processPayment, setPremium } = useFlashcardStore();
     const [showConfetti, setShowConfetti] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const router = useRouter();
+    const appState = useRef(AppState.currentState);
 
+    // Re-check premium status when app returns from VNPay browser
     useEffect(() => {
-        console.log('PremiumScreen connecting to:', API_URL);
+        const subscription = AppState.addEventListener('change', async (nextAppState) => {
+            if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+                // App came back to foreground - check if user is now premium
+                try {
+                    const res = await api.get('/api/auth/me');
+                    if (res.data?.isPremium) {
+                        setPremium(true);
+                        setShowConfetti(true);
+                    }
+                } catch (e) {
+                    console.log('Premium check failed:', e);
+                }
+            }
+            appState.current = nextAppState;
+        });
+        return () => subscription.remove();
     }, []);
 
-    const handlePayment = async () => {
-        if (cardNumber.length < 16 || !expiry.includes('/') || cvv.length < 3) {
-            Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin thẻ giả lập.');
-            return;
-        }
-
+    const handleVNPayPayment = async () => {
         setIsProcessing(true);
         try {
-            const tid = 'FF-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-            await processPayment(199000, tid);
-            
-            setShowConfetti(true);
-            setTimeout(() => {
-                Alert.alert('Thành công', 'Chúc mừng! Bạn đã nâng cấp lên bản Premium chuyên nghiệp.', [
-                    { text: 'Bắt đầu ngay', onPress: () => router.replace('/') }
-                ]);
-            }, 1000);
+            const result = await processPayment(199000, '');
+            if (result?.paymentUrl) {
+                // Open VNPay payment page in browser
+                await Linking.openURL(result.paymentUrl);
+                Alert.alert(
+                    'Thanh toán VNPay',
+                    'Trang thanh toán VNPay đã được mở trong trình duyệt. Sau khi thanh toán xong, hãy quay lại ứng dụng.',
+                    [{ text: 'OK' }]
+                );
+            }
         } catch (e) {
-            Alert.alert('Lỗi', 'Không thể thực hiện thanh toán. Vui lòng thử lại sau.');
+            Alert.alert('Lỗi', 'Không thể kết nối tới cổng thanh toán. Vui lòng thử lại sau.');
         } finally {
             setIsProcessing(false);
         }
@@ -66,50 +76,52 @@ export default function PremiumScreen() {
                 Mở khóa tất cả tính năng, đồng bộ đám mây và ủng hộ đội ngũ phát triển FlashFocus!
             </Text>
 
-            <View style={styles.cardContainer}>
-                <Text style={styles.label}>Số thẻ (16 chữ số)</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="4242 4242 4242 4242"
-                    keyboardType="numeric"
-                    maxLength={16}
-                    value={cardNumber}
-                    onChangeText={setCardNumber}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <View style={{ width: '60%' }}>
-                        <Text style={styles.label}>Hết hạn (MM/YY)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="12/26"
-                            value={expiry}
-                            onChangeText={setExpiry}
-                        />
-                    </View>
-                    <View style={{ width: '35%' }}>
-                        <Text style={styles.label}>CVV</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="***"
-                            secureTextEntry
-                            keyboardType="numeric"
-                            maxLength={3}
-                            value={cvv}
-                            onChangeText={setCvv}
-                        />
-                    </View>
+            {/* Features list */}
+            <View style={styles.featureCard}>
+                <View style={styles.featureRow}>
+                    <Ionicons name="cloud-outline" size={24} color="#3b82f6" />
+                    <Text style={styles.featureText}>Đồng bộ đám mây không giới hạn</Text>
+                </View>
+                <View style={styles.featureRow}>
+                    <Ionicons name="stats-chart-outline" size={24} color="#3b82f6" />
+                    <Text style={styles.featureText}>Thống kê học tập chuyên sâu</Text>
+                </View>
+                <View style={styles.featureRow}>
+                    <Ionicons name="people-outline" size={24} color="#3b82f6" />
+                    <Text style={styles.featureText}>Chia sẻ bộ thẻ cộng đồng</Text>
+                </View>
+                <View style={styles.featureRow}>
+                    <Ionicons name="sparkles-outline" size={24} color="#3b82f6" />
+                    <Text style={styles.featureText}>Hỗ trợ ưu tiên & cập nhật sớm</Text>
                 </View>
             </View>
 
+            {/* Price */}
+            <View style={styles.priceContainer}>
+                <Text style={styles.priceLabel}>Chỉ với</Text>
+                <Text style={styles.price}>199.000đ</Text>
+                <Text style={styles.pricePeriod}>trọn đời</Text>
+            </View>
+
+            {/* VNPay Button */}
             <TouchableOpacity 
-                style={[styles.payButton, { opacity: isProcessing ? 0.7 : 1 }]} 
-                onPress={handlePayment}
+                style={[styles.vnpayButton, { opacity: isProcessing ? 0.7 : 1 }]} 
+                onPress={handleVNPayPayment}
                 disabled={isProcessing}
             >
-                <Text style={styles.payButtonText}>
-                    {isProcessing ? 'Đang xử lý...' : 'Thanh toán 199.000đ'}
+                {isProcessing ? (
+                    <ActivityIndicator color="#fff" style={{ marginRight: 10 }} />
+                ) : (
+                    <Ionicons name="card-outline" size={22} color="#fff" style={{ marginRight: 10 }} />
+                )}
+                <Text style={styles.vnpayButtonText}>
+                    {isProcessing ? 'Đang kết nối VNPay...' : 'Thanh toán qua VNPay'}
                 </Text>
             </TouchableOpacity>
+
+            <Text style={styles.secureText}>
+                🔒 Thanh toán an toàn qua cổng VNPay
+            </Text>
         </ScrollView>
     );
 }
@@ -138,7 +150,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#444',
         textAlign: 'center',
-        marginBottom: 40,
+        marginBottom: 30,
         paddingHorizontal: 20,
     },
     button: {
@@ -152,39 +164,64 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
     },
-    cardContainer: {
+    featureCard: {
         width: '100%',
-        backgroundColor: '#f9f9f9',
+        backgroundColor: '#f8fafc',
         padding: 20,
-        borderRadius: 15,
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#eee',
-        marginBottom: 30,
+        borderColor: '#e2e8f0',
+        marginBottom: 24,
     },
-    label: {
-        fontSize: 14,
-        color: '#777',
-        marginBottom: 5,
-    },
-    input: {
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
-        marginBottom: 15,
-    },
-    payButton: {
-        backgroundColor: '#000',
-        width: '100%',
-        paddingVertical: 15,
-        borderRadius: 10,
+    featureRow: {
+        flexDirection: 'row',
         alignItems: 'center',
+        marginBottom: 14,
     },
-    payButtonText: {
+    featureText: {
+        fontSize: 15,
+        color: '#334155',
+        marginLeft: 12,
+    },
+    priceContainer: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    priceLabel: {
+        fontSize: 14,
+        color: '#94a3b8',
+    },
+    price: {
+        fontSize: 42,
+        fontWeight: '900',
+        color: '#1e293b',
+    },
+    pricePeriod: {
+        fontSize: 14,
+        color: '#94a3b8',
+    },
+    vnpayButton: {
+        backgroundColor: '#0066CC',
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        shadowColor: '#0066CC',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    vnpayButtonText: {
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
+    },
+    secureText: {
+        marginTop: 16,
+        fontSize: 13,
+        color: '#94a3b8',
     },
 });

@@ -6,6 +6,18 @@ const { Server } = require('socket.io');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const { VNPay, ignoreLogger, ProductCode, VnpLocale } = require('vnpay');
+
+// VNPay Sandbox configuration
+const vnpay = new VNPay({
+    tmnCode: 'CGXZLS0Z',
+    secureSecret: 'XNBCJFAKAZQSGTARRLGCHVZWCIOIGSHN',
+    vnpayHost: 'https://sandbox.vnpayment.vn',
+    testMode: true,
+    hashAlgorithm: 'SHA512',
+    enableLog: true,
+    loggerFn: ignoreLogger,
+});
 
 const User = require('./models/User');
 const Deck = require('./models/Deck');
@@ -75,6 +87,17 @@ app.post('/api/auth/login', async (req, res) => {
         res.json({ token, user: { id: user._id, username: user.username, isPremium: user.isPremium, isAdmin: user.isAdmin } });
     } catch (e) {
         console.error('Login error FULL:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get current user info (for refreshing premium status after VNPay)
+app.get('/api/auth/me', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        res.json({ id: user._id, username: user.username, isPremium: user.isPremium, isAdmin: user.isAdmin });
+    } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
@@ -291,6 +314,122 @@ app.get('/api/admin/payments', [auth, adminCheck], async (req, res) => {
         res.json(payments);
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// VNPay Payment Routes
+app.post('/api/vnpay/create', auth, async (req, res) => {
+    console.log('VNPay create payment request from user:', req.user.id);
+    try {
+        const { amount } = req.body;
+        const orderId = 'FF' + Date.now();
+        
+        const paymentUrl = vnpay.buildPaymentUrl({
+            vnp_Amount: amount || 199000,
+            vnp_IpAddr: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1',
+            vnp_TxnRef: orderId,
+            vnp_OrderInfo: `Nang cap Premium FlashFocus - ${orderId}`,
+            vnp_OrderType: ProductCode.Pay,
+            vnp_ReturnUrl: `${req.protocol}://${req.get('host')}/api/vnpay/return`,
+            vnp_Locale: VnpLocale.VN,
+        });
+        
+        // Save pending payment
+        const payment = new Payment({
+            userId: req.user.id,
+            amount: amount || 199000,
+            transactionId: orderId,
+            status: 'pending',
+            paymentMethod: 'vnpay'
+        });
+        await payment.save();
+        console.log('VNPay payment URL created:', paymentUrl);
+        
+        res.json({ paymentUrl, orderId });
+    } catch (e) {
+        console.error('VNPay create error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/vnpay/return', async (req, res) => {
+    console.log('VNPay return callback:', req.query);
+    try {
+        const verify = vnpay.verifyReturnUrl(req.query);
+        console.log('VNPay verify result:', verify);
+        
+        const orderId = req.query.vnp_TxnRef;
+        const payment = await Payment.findOne({ transactionId: orderId });
+        
+        if (verify.isVerified && verify.isSuccess) {
+            // Update payment status
+            if (payment) {
+                payment.status = 'completed';
+                payment.vnpayData = req.query;
+                await payment.save();
+                
+                // Upgrade user to premium
+                await User.findByIdAndUpdate(payment.userId, { isPremium: true });
+                console.log('User', payment.userId, 'upgraded to premium via VNPay');
+            }
+            
+            // Redirect to success page
+            res.send(`
+                <html>
+                <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+                <body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4;">
+                    <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                        <div style="font-size:60px;">✅</div>
+                        <h1 style="color:#16a34a;">Thanh toán thành công!</h1>
+                        <p>Mã giao dịch: <strong>${orderId}</strong></p>
+                        <p>Bạn đã nâng cấp lên <strong>Premium</strong> thành công.</p>
+                        <p style="color:#666;">Hãy quay lại ứng dụng FlashFocus.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        } else {
+            if (payment) {
+                payment.status = 'failed';
+                payment.vnpayData = req.query;
+                await payment.save();
+            }
+            res.send(`
+                <html>
+                <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+                <body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#fef2f2;">
+                    <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+                        <div style="font-size:60px;">❌</div>
+                        <h1 style="color:#dc2626;">Thanh toán thất bại</h1>
+                        <p>Vui lòng thử lại trong ứng dụng FlashFocus.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+    } catch (e) {
+        console.error('VNPay return error:', e.message);
+        res.status(500).send('Error processing payment return');
+    }
+});
+
+app.get('/api/vnpay/ipn', async (req, res) => {
+    try {
+        const verify = vnpay.verifyIpnCall(req.query);
+        if (verify.isVerified && verify.isSuccess) {
+            const orderId = req.query.vnp_TxnRef;
+            const payment = await Payment.findOne({ transactionId: orderId });
+            if (payment && payment.status !== 'completed') {
+                payment.status = 'completed';
+                payment.vnpayData = req.query;
+                await payment.save();
+                await User.findByIdAndUpdate(payment.userId, { isPremium: true });
+            }
+            return res.json({ RspCode: '00', Message: 'Confirm Success' });
+        }
+        return res.json({ RspCode: '97', Message: 'Checksum failed' });
+    } catch (e) {
+        return res.json({ RspCode: '99', Message: 'Unknown error' });
     }
 });
 

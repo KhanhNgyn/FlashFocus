@@ -5,6 +5,8 @@ const paymentSchema = new mongoose.Schema({
     amount: { type: Number, required: true },
     transactionId: { type: String, required: true },
     status: { type: String, default: 'completed' },
+    paymentMethod: { type: String, default: 'vnpay' },
+    vnpayData: { type: Object, default: {} },
     created_at: { type: Date, default: Date.now }
 });
 

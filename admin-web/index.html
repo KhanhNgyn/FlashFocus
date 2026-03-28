@@ -163,6 +163,8 @@
                         <th>Khách hàng</th>
                         <th>Số tiền (VND)</th>
                         <th>Mã giao dịch</th>
+                        <th>Phương thức</th>
+                        <th>Trạng thái</th>
                         <th>Ngày thanh toán</th>
                     </tr>
                 </thead>
@@ -275,11 +277,15 @@
                 const tbody = document.querySelector('#payments-table tbody');
                 tbody.innerHTML = '';
                 data.forEach(p => {
+                    const statusColor = p.status === 'completed' ? '#dcfce7' : p.status === 'pending' ? '#fef9c3' : '#fde6e6';
+                    const statusLabel = p.status === 'completed' ? '✅ Thành công' : p.status === 'pending' ? '⏳ Chờ xử lý' : '❌ Thất bại';
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td><b>${p.userId?.username}</b><br><small>${p.userId?.email}</small></td>
+                        <td><b>${p.userId?.username || 'N/A'}</b><br><small>${p.userId?.email || ''}</small></td>
                         <td>${p.amount.toLocaleString()} VND</td>
                         <td><code>${p.transactionId}</code></td>
+                        <td><span class="badge" style="background:#dbeafe;color:#1e40af;">${(p.paymentMethod || 'manual').toUpperCase()}</span></td>
+                        <td><span class="badge" style="background:${statusColor}">${statusLabel}</span></td>
                         <td>${new Date(p.created_at).toLocaleString()}</td>
                     `;
                     tbody.appendChild(tr);
