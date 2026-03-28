@@ -33,6 +33,7 @@ interface FlashcardState {
     deleteCard: (id: number) => Promise<void>;
     reviewCard: (cardId: number, quality: number) => Promise<void>;
     setPremium: (status: boolean) => void;
+    processPayment: (amount: number, transactionId: string) => Promise<void>;
     syncData: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;
     register: (username: string, email: string, password: string) => Promise<void>;
@@ -52,6 +53,16 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
     isAdmin: false,
 
     setPremium: (status: boolean) => set({ isPremium: status }),
+    
+    processPayment: async (amount, transactionId) => {
+        try {
+            await api.post('/api/payments', { amount, transactionId });
+            set({ isPremium: true });
+        } catch (e) {
+            console.error('Payment processing failed:', e);
+            throw e;
+        }
+    },
 
     fetchPublicDecks: async () => {
         try {

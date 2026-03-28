@@ -68,6 +68,15 @@
             color: white;
         }
         .btn-danger { background: #ef4444; }
+        .nav-item {
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 5px;
+            transition: 0.3s;
+        }
+        .nav-item:hover { background: rgba(255,255,255,0.1); }
+        .nav-item.active { background: var(--primary); color: white; }
         .config-panel {
             background: #f1f5f9;
             padding: 15px;
@@ -99,18 +108,21 @@
         <p style="opacity: 0.6">Web Management Portal</p>
         <hr style="opacity: 0.2; margin: 20px 0">
         <nav>
-            <p style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px;">Dashboard</p>
-            <p onclick="logout()" style="cursor: pointer; opacity: 0.6; margin-top: 20px">Đăng xuất</p>
+            <p onclick="showSection('decks')" id="nav-decks" class="nav-item active">Quản lý Decks</p>
+            <p onclick="showSection('users')" id="nav-users" class="nav-item">Quản lý Người dùng</p>
+            <p onclick="showSection('payments')" id="nav-payments" class="nav-item">Lịch sử Thanh toán</p>
+            <p onclick="logout()" style="cursor: pointer; opacity: 0.6; margin-top: 40px">Đăng xuất</p>
         </nav>
     </aside>
 
     <main>
         <div class="header">
-            <h1>Quản trị Hệ thống</h1>
+            <h1 id="section-title">Quản lý Hệ thống</h1>
             <div id="status-badge" class="badge">Đã đăng nhập</div>
         </div>
 
-        <div class="card">
+        <!-- Decks Section -->
+        <div id="decks-section" class="card section">
             <h2>Danh sách Bộ thẻ Toàn hệ thống</h2>
             <table id="decks-table">
                 <thead>
@@ -121,20 +133,63 @@
                         <th>Thao tác</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <!-- Data will load here -->
-                </tbody>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Users Section -->
+        <div id="users-section" class="card section" style="display: none;">
+            <h2>Quản lý Người dùng</h2>
+            <table id="users-table">
+                <thead>
+                    <tr>
+                        <th>Người dùng</th>
+                        <th>Email</th>
+                        <th>Premium</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Payments Section -->
+        <div id="payments-section" class="card section" style="display: none;">
+            <h2>Lịch sử Thanh toán & Nâng cấp</h2>
+            <table id="payments-table">
+                <thead>
+                    <tr>
+                        <th>Khách hàng</th>
+                        <th>Số tiền (VND)</th>
+                        <th>Mã giao dịch</th>
+                        <th>Ngày thanh toán</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
             </table>
         </div>
     </main>
 
     <script>
-        const API_URL = 'https://flashfocus-1.onrender.com';
+        const API_URL = 'http://localhost:5000';
         let token = localStorage.getItem('ff_admin_token');
 
         if (token) {
             document.getElementById('login-overlay').style.display = 'none';
             loadDecks();
+        }
+
+        function showSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            
+            document.getElementById(`${section}-section`).style.display = 'block';
+            document.getElementById(`nav-${section}`).classList.add('active');
+            
+            if (section === 'decks') loadDecks();
+            if (section === 'users') loadUsers();
+            if (section === 'payments') loadPayments();
         }
 
         async function login() {
@@ -156,7 +211,7 @@
                     document.getElementById('login-overlay').style.display = 'none';
                     loadDecks();
                 } else {
-                    errorEl.innerText = data.user && !data.user.isAdmin ? 'Tài khoản không có quyền Admin!' : 'Email hoặc mật khẩu sai!';
+                    errorEl.innerText = data.user && !data.user.isAdmin ? 'Tài khoản không có quyền Admin!' : (data.error || 'Email hoặc mật khẩu sai!');
                     errorEl.style.display = 'block';
                 }
             } catch (e) {
@@ -172,36 +227,82 @@
                 const data = await res.json();
                 const tbody = document.querySelector('#decks-table tbody');
                 tbody.innerHTML = '';
-
                 data.forEach(deck => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>
-                            <div style="font-weight: bold">${deck.userId?.username || 'Guest'}</div>
-                            <div style="font-size: 11px; opacity: 0.6">${deck.userId?.email || ''}</div>
-                        </td>
+                        <td><b>${deck.userId?.username || 'Guest'}</b><br><small>${deck.userId?.email || ''}</small></td>
                         <td>${deck.title}</td>
                         <td>${new Date(deck.created_at).toLocaleDateString()}</td>
                         <td><button class="btn-danger" onclick="deleteDeck('${deck._id}')">Xóa</button></td>
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch (e) {
-                if (res.status === 401 || res.status === 403) logout();
-            }
+            } catch (e) {}
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch(`${API_URL}/api/admin/users`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tbody = document.querySelector('#users-table tbody');
+                tbody.innerHTML = '';
+                data.forEach(user => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${user.username}</td>
+                        <td>${user.email}</td>
+                        <td>${user.isPremium ? '✅' : '❌'}</td>
+                        <td><span class="badge" style="background: ${user.isDeleted ? '#fde6e6' : '#e6fde6'}">${user.isDeleted ? 'Đã chặn' : 'Hoạt động'}</span></td>
+                        <td>
+                            <button class="${user.isDeleted ? '' : 'btn-danger'}" onclick="toggleUserBan('${user._id}')">
+                                ${user.isDeleted ? 'Bỏ chặn' : 'Chặn'}
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {}
+        }
+
+        async function loadPayments() {
+            try {
+                const res = await fetch(`${API_URL}/api/admin/payments`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const tbody = document.querySelector('#payments-table tbody');
+                tbody.innerHTML = '';
+                data.forEach(p => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${p.userId?.username}</b><br><small>${p.userId?.email}</small></td>
+                        <td>${p.amount.toLocaleString()} VND</td>
+                        <td><code>${p.transactionId}</code></td>
+                        <td>${new Date(p.created_at).toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {}
+        }
+
+        async function toggleUserBan(id) {
+            if(!confirm('Bạn có chắc muốn thay đổi trạng thái người dùng này?')) return;
+            const res = await fetch(`${API_URL}/api/admin/users/${id}`, { 
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if(res.ok) loadUsers();
         }
 
         async function deleteDeck(id) {
-            if(!confirm('Bạn có chắc muốn xóa bộ thẻ này khỏi hệ thống?')) return;
-            try {
-                const res = await fetch(`${API_URL}/api/admin/decks/${id}`, { 
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if(res.ok) loadDecks();
-            } catch (e) {
-                alert('Lỗi khi xóa dữ liệu');
-            }
+            if(!confirm('Xóa bộ thẻ này?')) return;
+            const res = await fetch(`${API_URL}/api/admin/decks/${id}`, { 
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if(res.ok) loadDecks();
         }
 
         function logout() {

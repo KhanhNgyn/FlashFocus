@@ -15,7 +15,7 @@ import { useFlashcardStore } from '../../src/store/flashcardStore';
 
 const { width } = Dimensions.get('window');
 
-export default function HomeScreen() {
+function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -145,3 +145,4 @@ const styles = StyleSheet.create({
     color: '#000',
   }
 });
+export default HomeScreen;

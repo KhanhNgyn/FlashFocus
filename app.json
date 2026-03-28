@@ -40,13 +40,6 @@
           }
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "color": "#4F46E5",
-          "defaultChannel": "pomodoro-alerts"
-        }
-      ],
       "expo-sqlite",
       "expo-secure-store"
     ],

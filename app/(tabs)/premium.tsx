@@ -1,40 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native';
 import { useFlashcardStore } from '@/src/store/flashcardStore';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import { API_URL } from '@/src/services/api';
 
 export default function PremiumScreen() {
-    const { isPremium, setPremium } = useFlashcardStore();
+    const { isPremium, processPayment } = useFlashcardStore();
     const [cardNumber, setCardNumber] = useState('');
     const [expiry, setExpiry] = useState('');
     const [cvv, setCvv] = useState('');
     const [showConfetti, setShowConfetti] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const router = useRouter();
 
-    const handlePayment = () => {
+    useEffect(() => {
+        console.log('PremiumScreen connecting to:', API_URL);
+    }, []);
+
+    const handlePayment = async () => {
         if (cardNumber.length < 16 || !expiry.includes('/') || cvv.length < 3) {
             Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin thẻ giả lập.');
             return;
         }
 
-        // Simulate payment processing
-        Alert.alert('Đang xử lý', 'Đang thực hiện giao dịch an toàn...', [
-            {
-                text: 'OK',
-                onPress: () => {
-                    setPremium(true);
-                    setShowConfetti(true);
-                    setTimeout(() => {
-                        Alert.alert('Thành công', 'Chúc mừng! Bạn đã nâng cấp lên bản Premium chuyên nghiệp.', [
-                            { text: 'Bắt đầu ngay', onPress: () => router.replace('/') }
-                        ]);
-                    }, 1000);
-                }
-            }
-        ]);
+        setIsProcessing(true);
+        try {
+            const tid = 'FF-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            await processPayment(199000, tid);
+            
+            setShowConfetti(true);
+            setTimeout(() => {
+                Alert.alert('Thành công', 'Chúc mừng! Bạn đã nâng cấp lên bản Premium chuyên nghiệp.', [
+                    { text: 'Bắt đầu ngay', onPress: () => router.replace('/') }
+                ]);
+            }, 1000);
+        } catch (e) {
+            Alert.alert('Lỗi', 'Không thể thực hiện thanh toán. Vui lòng thử lại sau.');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     if (isPremium) {
@@ -94,8 +101,14 @@ export default function PremiumScreen() {
                 </View>
             </View>
 
-            <TouchableOpacity style={styles.payButton} onPress={handlePayment}>
-                <Text style={styles.payButtonText}>Thanh toán 199.000đ</Text>
+            <TouchableOpacity 
+                style={[styles.payButton, { opacity: isProcessing ? 0.7 : 1 }]} 
+                onPress={handlePayment}
+                disabled={isProcessing}
+            >
+                <Text style={styles.payButtonText}>
+                    {isProcessing ? 'Đang xử lý...' : 'Thanh toán 199.000đ'}
+                </Text>
             </TouchableOpacity>
         </ScrollView>
     );

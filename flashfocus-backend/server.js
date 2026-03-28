@@ -11,6 +11,7 @@ const User = require('./models/User');
 const Deck = require('./models/Deck');
 const Card = require('./models/Card');
 const Message = require('./models/Message');
+const Payment = require('./models/Payment');
 const auth = require('./middleware/auth');
 
 const adminCheck = (req, res, next) => {
@@ -62,6 +63,9 @@ app.post('/api/auth/login', async (req, res) => {
         console.log('Find user result:', user ? 'User found' : 'User NOT found');
         if (!user || !(await user.comparePassword(password))) {
             return res.status(401).json({ error: 'Invalid email or password' });
+        }
+        if (user.isDeleted) {
+            return res.status(403).json({ error: 'Tài khoản của bạn đã bị khóa!' });
         }
         const token = jwt.sign(
             { id: user._id, username: user.username, isAdmin: user.isAdmin }, 
@@ -225,6 +229,66 @@ app.delete('/api/admin/decks/:id', [auth, adminCheck], async (req, res) => {
         await Deck.findByIdAndDelete(req.params.id);
         await Card.deleteMany({ deck_id: req.params.id });
         res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Admin User Management
+app.get('/api/admin/users', [auth, adminCheck], async (req, res) => {
+    try {
+        const users = await User.find({ isAdmin: false }).sort({ created_at: -1 });
+        res.json(users);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/admin/users/:id', [auth, adminCheck], async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+        
+        user.isDeleted = !user.isDeleted; // Toggle ban/unban
+        await user.save();
+        res.json({ success: true, isDeleted: user.isDeleted });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Payments
+app.post('/api/payments', auth, async (req, res) => {
+    console.log('Received payment request:', req.body, 'from user:', req.user.id);
+    try {
+        const { amount, transactionId } = req.body;
+        const payment = new Payment({
+            userId: req.user.id,
+            amount,
+            transactionId
+        });
+        await payment.save();
+        console.log('Payment saved to DB');
+        
+        // Upgrade user to premium
+        await User.findByIdAndUpdate(req.user.id, { isPremium: true });
+        console.log('User upgraded to premium');
+        
+        res.status(201).json(payment);
+    } catch (e) {
+        console.error('Payment error:', e.message);
+        res.status(400).json({ error: e.message });
+    }
+});
+
+app.get('/api/admin/payments', [auth, adminCheck], async (req, res) => {
+    console.log('Admin fetching payments...');
+    try {
+        const payments = await Payment.find()
+            .populate('userId', 'username email')
+            .sort({ created_at: -1 });
+        console.log('Found payments:', payments.length);
+        res.json(payments);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
